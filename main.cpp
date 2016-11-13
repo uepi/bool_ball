@@ -8,6 +8,7 @@
 #include <iostream>
 #include<vector>
 #include <directxmath.h>
+#include<debugapi.h>
 
 using namespace DirectX;
 using namespace std;
@@ -18,7 +19,7 @@ using namespace std;
 #define D3DX_PI ((FLOAT) 3.141592654f) 
 #define D3DXToRadian( degree ) ((degree) * (D3DX_PI / 180.0f))
 #define D3DXToDegree( radian ) ((radian) * (180.0f / D3DX_PI))
-int pmd1 = 0;
+
 #include "pmd.h"
 //安全に解放する
 #define SAFE_RELEASE(x) if(x){x->Release(); x=NULL;}
@@ -34,14 +35,20 @@ ID3D11Buffer* VertexBuffer = NULL;
 ID3D11Buffer* IndexBuffer = NULL;
 ID3D11VertexShader* VertexShader = NULL;//頂点シェーダー
 ID3D11PixelShader* PixelShader = NULL;//ピクセルシェーダー
-
-
+ID3D11Buffer* hpConstantBuffer = NULL;// コンスタントバッファ
 
 struct Vertex3D {
 	float pos[3];	//x-y-z
 	float col[4];	//r-g-b-a
 	float tex[2];
 };
+
+struct Camera {
+	float pos[4] = { 0.0f,20.0f,-15.0f,0.0f };
+	float at[4] = { 0.0f,30.0f,-7.0f,0.0f };
+	float up[4] = { 0.0f,1.0f,0.0f,0.0f };
+};
+Camera camera ;
 
 //シェーダーに送る
 struct ConstantBuffer
@@ -97,7 +104,7 @@ HRESULT InitD3D(HWND hWnd)
 	//ラスタライザ
 	ID3D11RasterizerState* hpRasterizerState = NULL;
 	D3D11_RASTERIZER_DESC hRasterizerDesc = {
-		D3D11_FILL_SOLID,
+		D3D11_FILL_WIREFRAME,
 		D3D11_CULL_NONE,	//ポリゴンの裏表を無くす
 		FALSE,
 		0,
@@ -177,7 +184,7 @@ HRESULT CreateShader()
 void CreateConstantBuffer()
 {
 	//constantバッファ生成
-	ID3D11Buffer* hpConstantBuffer = NULL;
+	
 	D3D11_BUFFER_DESC hBufferDesc;
 	hBufferDesc.ByteWidth = sizeof(ConstantBuffer);
 	hBufferDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -192,15 +199,17 @@ void CreateConstantBuffer()
 	//ワールド変換用行列を生成
 	XMMATRIX hWorld;		//ワールド変換行列
 	hWorld = XMMatrixIdentity();
-
+	
 	XMMATRIX hView;		//ビュー変換行列
-	XMVECTOR hEye = XMVectorSet(5.0f, 0.0f, -2.0f, 0.0f);	//カメラの位置
-	XMVECTOR hAt = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);		//焦点の位置
-	XMVECTOR hUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	
+	XMVECTOR hEye = XMVectorSet(camera.pos[0], camera.pos[1], camera.pos[2], camera.pos[3]);	//カメラの位置
+	XMVECTOR hAt = XMVectorSet(camera.at[0], camera.at[1], camera.at[2], camera.at[3]);		//焦点の位置
+	XMVECTOR hUp = XMVectorSet(camera.up[0], camera.up[1], camera.up[2], camera.up[3]);
+	
 	hView = XMMatrixLookAtLH(hEye, hAt, hUp);
 
 	XMMATRIX hProjection;	//透視射影変換行列
-	hProjection = XMMatrixPerspectiveFovLH(D3DXToRadian(45.0f), 16.0f / 9.0f, 0.1f, 1000.0f);
+	hProjection = XMMatrixPerspectiveFovLH(D3DXToRadian(110.0f), 16.0f / 9.0f, 0.1f, 1000.0f);
 
 	ConstantBuffer hConstantBuffer;
 	hConstantBuffer.mWorld = XMMatrixTranspose(hWorld);
@@ -211,18 +220,43 @@ void CreateConstantBuffer()
 	//コンテキストに設定
 	DeviceContext->VSSetConstantBuffers(0, 1, &hpConstantBuffer);
 }
+void set() {
+	//ワールド変換用行列を生成
+	XMMATRIX hWorld;		//ワールド変換行列
+	hWorld = XMMatrixIdentity();
 
+	XMMATRIX hView;		//ビュー変換行列
+
+	XMVECTOR hEye = XMVectorSet(camera.pos[0], camera.pos[1], camera.pos[2], camera.pos[3]);	//カメラの位置
+	XMVECTOR hAt = XMVectorSet(camera.at[0], camera.at[1], camera.at[2], camera.at[3]);		//焦点の位置
+	XMVECTOR hUp = XMVectorSet(camera.up[0], camera.up[1], camera.up[2], camera.up[3]);
+
+	hView = XMMatrixLookAtLH(hEye, hAt, hUp);
+	
+
+	XMMATRIX hProjection;	//透視射影変換行列
+	hProjection = XMMatrixPerspectiveFovLH(D3DXToRadian(100.0f), 16.0f / 9.0f, 0.1f, 1000.0f);
+
+	ConstantBuffer hConstantBuffer;
+	hConstantBuffer.mWorld = XMMatrixTranspose(hWorld);
+	hConstantBuffer.mView = XMMatrixTranspose(hView);
+	hConstantBuffer.mProjection = XMMatrixTranspose(hProjection);
+	DeviceContext->UpdateSubresource(hpConstantBuffer, 0, NULL, &hConstantBuffer, 0, 0);
+
+	//コンテキストに設定
+	DeviceContext->VSSetConstantBuffers(0, 1, &hpConstantBuffer);
+}
 void CreateVertexData(pmd* _model, vector<Vertex3D>& _data, unsigned short** _index)
 {
 	for (int i = 0; i < _model->vert_count; ++i) {
 		Vertex3D tmp;
 
-		tmp.pos[0] = _model->vertex[i].pos[0] * 0.1f;
-		tmp.pos[1] = _model->vertex[i].pos[1] * 0.1f;
-		tmp.pos[2] = _model->vertex[i].pos[2] * 0.1f;
+		tmp.pos[0] = _model->vertex[i].pos[0]*0.1f;
+		tmp.pos[1] = _model->vertex[i].pos[1]*0.1f;
+		tmp.pos[2] = _model->vertex[i].pos[2]*0.1f;
 		tmp.col[0] = 0.0f;
 		tmp.col[1] = 0.0f;
-		tmp.col[2] = 0.5f;
+		tmp.col[2] = 0.0f;
 		tmp.col[3] = 1.0f;
 		tmp.tex[0] = 0.0f;
 		tmp.tex[1] = 1.0f;
@@ -236,6 +270,25 @@ void CreateVertexData(pmd* _model, vector<Vertex3D>& _data, unsigned short** _in
 
 	for (int i = 0; i < INDEXSU; i++) {
 		_index[0][i] = _model->face_vert_index[i];
+	}
+	
+	int COLORSU = _model->material_count;
+
+	int cnt_idx = 0;	//インデックスカウンター
+	for (int i = 0; i < COLORSU; i++) {
+		//マテリアルにあるカウンター分回す
+		for (int j = 0; j < _model->material[i].face_vert_count; j++) {
+			//インデックスから頂点座標の行数を取り出す
+			int pos_vec = _model->face_vert_index[cnt_idx];
+			cnt_idx++;	//インデックスカウンターを進める
+
+						//その頂点座標のカラーが現在のマテリアルカラー
+			_data[pos_vec].col[0] = _model->material[i].diffuse_color[0];	//R
+			_data[pos_vec].col[1] = _model->material[i].diffuse_color[1];	//G
+			_data[pos_vec].col[2] = _model->material[i].diffuse_color[2];	//B
+			_data[pos_vec].col[3] = _model->material[i].alpha;	//A
+		}
+		
 	}
 }
 
@@ -302,8 +355,15 @@ VOID Render(pmd* _model)
 	//プリミティブ・トポロジーをセット
 	DeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	DeviceContext->DrawIndexed(_model->face_vert_count, 0, 0);
-	//プリミティブをレンダリング
+	
+	int vertex_start = 0;
+	for (int i = 0; i < _model->material_count;i++) {
+				
+				DeviceContext->DrawIndexed(_model->material[i].face_vert_count, vertex_start, 0);
+				vertex_start = vertex_start + _model->material[i].face_vert_count;//マテリアルの頂点数すすめる
+	}		
+
+	
 
 }
 //終了時解放処理
@@ -327,6 +387,46 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_DESTROY://終了時
 		Cleanup();
 		PostQuitMessage(0);
+		break;
+	
+	case WM_KEYDOWN:
+		switch (wParam)
+		{
+		case VK_LEFT:
+			camera.pos[0] = camera.pos[0] - 10.0f;
+			
+			OutputDebugString("L");
+			break;
+
+		case VK_RIGHT:
+			camera.pos[0] = camera.pos[0] + 10.0f;
+			OutputDebugString("R");
+			break;
+		case VK_UP:
+			camera.pos[1] = camera.pos[1] + 10.0f;
+			break;
+		case VK_DOWN:
+			camera.pos[1] = camera.pos[1] - 10.0f;
+			break;
+		case VK_F9:
+			camera.pos[2] = camera.pos[2] + 10.0f;
+			break;
+		case VK_F10:
+			camera.pos[2] = camera.pos[2] - 10.0f;
+			break;
+		case VK_F1:
+			camera.at[0] = camera.at[0] + 10.0f;
+			break;
+		case VK_F2:
+			camera.at[1] = camera.at[1] + 10.0f;
+			break;
+		case VK_F3:
+			camera.at[0] = camera.at[0] - 10.0f;
+			break;
+		case VK_F4:
+			camera.at[1] = camera.at[1] - 10.0f;
+			break;
+		}
 		break;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
@@ -357,7 +457,7 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 
 	MSG msg;
 	ZeroMemory(&msg, sizeof(msg));
-
+	
 	//Direct3D初期化
 	if (SUCCEEDED(InitD3D(hWnd)))
 	{
@@ -377,9 +477,10 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 		CreateVertexData(modeldata, TYOUTEN, &hIndexData);
 		CreateVertexBuffer(TYOUTEN);
 		CreateIndexBuffer(hIndexData,modeldata);
-
+		
 		//ウインドウ表示
 		ShowWindow(hWnd, SW_SHOW);
+		
 		UpdateWindow(hWnd);
 		while (msg.message != WM_QUIT)
 		{
@@ -390,10 +491,11 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 			}
 			else
 			{
+				set();
 				Render(modeldata);
-
 				SwapChain->Present(0, 0);//フリップ
 			}
+
 		}
 		delete[] hIndexData;
 		delete modeldata;
