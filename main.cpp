@@ -9,18 +9,18 @@
 #include<vector>
 #include <directxmath.h>
 #include<debugapi.h>
-
+#include"Ball.h"
 using namespace DirectX;
 using namespace std;
 
 //定数定義
-#define WINDOW_WIDTH 320 //ウィンドウ幅
-#define WINDOW_HEIGHT 240 //ウィンドウ高さ
+#define WINDOW_WIDTH 1920 //ウィンドウ幅
+#define WINDOW_HEIGHT 1080 //ウィンドウ高さ
 #define D3DX_PI ((FLOAT) 3.141592654f) 
 #define D3DXToRadian( degree ) ((degree) * (D3DX_PI / 180.0f))
 #define D3DXToDegree( radian ) ((radian) * (180.0f / D3DX_PI))
 
-#include "pmd.h"
+//#include "pmd.h"
 //安全に解放する
 #define SAFE_RELEASE(x) if(x){x->Release(); x=NULL;}
 
@@ -36,16 +36,26 @@ ID3D11Buffer* IndexBuffer = NULL;
 ID3D11VertexShader* VertexShader = NULL;//頂点シェーダー
 ID3D11PixelShader* PixelShader = NULL;//ピクセルシェーダー
 ID3D11Buffer* hpConstantBuffer = NULL;// コンスタントバッファ
+ID3D11DepthStencilView* DepthStencilView = NULL;//深度ステンシルビュー
 
-struct Vertex3D {
+ID3D11Buffer* Indexball = NULL;
+//ConstantBuffer hConstantBuffer;
+XMMATRIX hWorld;		//ワールド変換行列
+
+
+/*struct Vertex3D {
 	float pos[3];	//x-y-z
 	float col[4];	//r-g-b-a
 	float tex[2];
 };
-
+struct Vector3 {
+	float x;
+	float y;
+	float z;
+};*/
 struct Camera {
-	float pos[4] = { 0.0f,20.0f,-15.0f,0.0f };
-	float at[4] = { 0.0f,30.0f,-7.0f,0.0f };
+	float pos[4] = { 0.0f,2.0f,-2.0f,0.0f };
+	float at[4] = { 0.0f,0.0f,0.0f,0.0f };
 	float up[4] = { 0.0f,1.0f,0.0f,0.0f };
 };
 Camera camera ;
@@ -99,12 +109,12 @@ HRESULT InitD3D(HWND hWnd)
 	SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&BackBuffer);
 	Device->CreateRenderTargetView(BackBuffer, NULL, &RenderTargetView);
 	BackBuffer->Release();
-	DeviceContext->OMSetRenderTargets(1, &RenderTargetView, NULL);
+	
 
 	//ラスタライザ
 	ID3D11RasterizerState* hpRasterizerState = NULL;
 	D3D11_RASTERIZER_DESC hRasterizerDesc = {
-		D3D11_FILL_WIREFRAME,
+		D3D11_FILL_SOLID,
 		D3D11_CULL_NONE,	//ポリゴンの裏表を無くす
 		FALSE,
 		0,
@@ -120,6 +130,45 @@ HRESULT InitD3D(HWND hWnd)
 	//ラスタライザーをコンテキストに設定
 	DeviceContext->RSSetState(hpRasterizerState);
 
+	ID3D11Texture2D* hpTexture2dDepth = NULL;
+	D3D11_TEXTURE2D_DESC hTexture2dDesc;
+	hTexture2dDesc.Width = sd.BufferDesc.Width;
+	hTexture2dDesc.Height = sd.BufferDesc.Height;
+	hTexture2dDesc.MipLevels = 1;
+	hTexture2dDesc.ArraySize = 1;
+	hTexture2dDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	hTexture2dDesc.SampleDesc = sd.SampleDesc;
+	hTexture2dDesc.Usage = D3D11_USAGE_DEFAULT;
+	hTexture2dDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	hTexture2dDesc.CPUAccessFlags = 0;
+	hTexture2dDesc.MiscFlags = 0;
+	if (FAILED(Device->CreateTexture2D(&hTexture2dDesc, NULL, &hpTexture2dDepth))) {
+		MessageBoxW(hWnd, L"CreateTexture2D", L"Err", MB_ICONSTOP);
+		
+	}
+
+	ID3D11DepthStencilState* DepthStencilState = NULL;
+	D3D11_DEPTH_STENCIL_DESC DepthStencilDesc;
+	ZeroMemory(&DepthStencilDesc, sizeof(DepthStencilDesc));
+	DepthStencilDesc.DepthEnable = TRUE;
+	DepthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	DepthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
+	DepthStencilDesc.StencilEnable = FALSE;
+
+	Device->CreateDepthStencilState(&DepthStencilDesc, &DepthStencilState);
+	//ステンシルターゲット作成
+
+	D3D11_DEPTH_STENCIL_VIEW_DESC hDepthStencilViewDesc;
+	hDepthStencilViewDesc.Format = hTexture2dDesc.Format;
+	hDepthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
+	hDepthStencilViewDesc.Flags = 0;
+	if (FAILED(Device->CreateDepthStencilView(hpTexture2dDepth, &hDepthStencilViewDesc, &DepthStencilView))) {
+		MessageBoxW(hWnd, L"CreateDepthStencilView", L"Err", MB_ICONSTOP);
+	
+	}
+
+
+	DeviceContext->OMSetDepthStencilState(DepthStencilState,0);
 	//ビューポートの設定
 	D3D11_VIEWPORT vp;
 	vp.Width = WINDOW_WIDTH;
@@ -129,7 +178,7 @@ HRESULT InitD3D(HWND hWnd)
 	vp.TopLeftX = 0;
 	vp.TopLeftY = 0;
 	DeviceContext->RSSetViewports(1, &vp);
-
+	DeviceContext->OMSetRenderTargets(1, &RenderTargetView, DepthStencilView);
 
 	return S_OK;
 }
@@ -251,9 +300,9 @@ void CreateVertexData(pmd* _model, vector<Vertex3D>& _data, unsigned short** _in
 	for (int i = 0; i < _model->vert_count; ++i) {
 		Vertex3D tmp;
 
-		tmp.pos[0] = _model->vertex[i].pos[0]*0.1f;
-		tmp.pos[1] = _model->vertex[i].pos[1]*0.1f;
-		tmp.pos[2] = _model->vertex[i].pos[2]*0.1f;
+		tmp.pos[0] = _model->vertex[i].pos[0];
+		tmp.pos[1] = _model->vertex[i].pos[1];
+		tmp.pos[2] = _model->vertex[i].pos[2];
 		tmp.col[0] = 0.0f;
 		tmp.col[1] = 0.0f;
 		tmp.col[2] = 0.0f;
@@ -335,12 +384,55 @@ void CreateIndexBuffer(unsigned short* _index,pmd* _model)
 	}
 }
 
+void ballCreateVertexBuffer(vector<Vertex3D>& _data, Ball& balls)
+{
+	//頂点バッファ作成
+	D3D11_BUFFER_DESC bd;
+	ZeroMemory(&bd, sizeof(bd));
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.ByteWidth = sizeof(Vertex3D) * _data.size();
+	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	bd.CPUAccessFlags = 0;
+	bd.MiscFlags = 0;
+
+	D3D11_SUBRESOURCE_DATA InitData;
+	ZeroMemory(&InitData, sizeof(InitData));
+	InitData.pSysMem = (void*)&_data[0];
+	if (FAILED(Device->CreateBuffer(&bd, &InitData, &balls.VertexBuffer)))
+		return;
+}
+
+void ballCreateIndexBuffer(unsigned short* _index, pmd* _model,Ball& balls)
+{
+	ID3D11Buffer* IndexBuffer = NULL;
+	//インデックスバッファ作成
+	D3D11_BUFFER_DESC hBufferDesc;
+	ZeroMemory(&hBufferDesc, sizeof(hBufferDesc));
+
+	hBufferDesc.ByteWidth = _model->face_vert_count * sizeof(unsigned short);
+	hBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+	hBufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	hBufferDesc.CPUAccessFlags = 0;
+	hBufferDesc.MiscFlags = 0;
+	hBufferDesc.StructureByteStride = sizeof(unsigned short);
+
+	D3D11_SUBRESOURCE_DATA hSubResourceData;
+	hSubResourceData.pSysMem = _index;
+	hSubResourceData.SysMemPitch = 0;
+	hSubResourceData.SysMemSlicePitch = 0;
+
+	if (FAILED(Device->CreateBuffer(&hBufferDesc, &hSubResourceData, &balls.IndexBuffer))) {
+		MessageBoxW(hWnd, L"CreateBuffer Index", L"Err", MB_ICONSTOP);
+		//goto End;
+	}
+}
+
 //レンダリング
-VOID Render(pmd* _model)
+VOID Render(pmd* _model, ID3D11Buffer* VBuffer, ID3D11Buffer* IBuffer)
 {
 	float ClearColor[4] = { 0,0,1,1 }; //消去色
 	DeviceContext->ClearRenderTargetView(RenderTargetView, ClearColor);//画面クリア 
-																	   //使用するシェーダーの登録
+	DeviceContext->ClearDepthStencilView(DepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);																   //使用するシェーダーの登録
 	DeviceContext->VSSetShader(VertexShader, NULL, 0);
 	DeviceContext->PSSetShader(PixelShader, NULL, 0);
 
@@ -348,9 +440,9 @@ VOID Render(pmd* _model)
 	unsigned int stride = sizeof(Vertex3D);
 	unsigned int offset = 0;
 	//頂点バッファセット
-	DeviceContext->IASetVertexBuffers(0, 1, &VertexBuffer, &stride, &offset);
+	DeviceContext->IASetVertexBuffers(0, 1, &VBuffer, &stride, &offset);
 	//そのインデックスバッファをコンテキストに設定
-	DeviceContext->IASetIndexBuffer(IndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+	DeviceContext->IASetIndexBuffer(IBuffer, DXGI_FORMAT_R16_UINT, 0);
 
 	//プリミティブ・トポロジーをセット
 	DeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -364,6 +456,35 @@ VOID Render(pmd* _model)
 	}		
 
 	
+
+}
+
+VOID Renderball(pmd* _model, ID3D11Buffer* VBuffer, ID3D11Buffer* IBuffer)
+{
+
+	DeviceContext->VSSetShader(VertexShader, NULL, 0);
+	DeviceContext->PSSetShader(PixelShader, NULL, 0);
+
+
+	unsigned int stride = sizeof(Vertex3D);
+	unsigned int offset = 0;
+	//頂点バッファセット
+	DeviceContext->IASetVertexBuffers(0, 1, &VBuffer, &stride, &offset);
+	//そのインデックスバッファをコンテキストに設定
+	DeviceContext->IASetIndexBuffer(IBuffer, DXGI_FORMAT_R16_UINT, 0);
+
+	//プリミティブ・トポロジーをセット
+	DeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+
+	
+	
+
+		DeviceContext->Draw(_model->face_vert_count, 0);
+		
+	
+
+
 
 }
 //終了時解放処理
@@ -432,7 +553,17 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+void createBall(Vector3 positions) {
+	
+	XMMATRIX hTrans;
+	hTrans = XMMatrixTranslation(positions.x, 0.0f, positions.z);
+	hWorld = XMMatrixMultiply(hWorld, hTrans);
 
+	ConstantBuffer hConstantBuffer;
+	hConstantBuffer.mWorld = XMMatrixTranspose(hWorld);
+	DeviceContext->UpdateSubresource(hpConstantBuffer, 0, NULL, &hConstantBuffer, 0, 0);
+	DeviceContext->VSSetConstantBuffers(0, 1, &hpConstantBuffer);
+}
 
 //メイン関数
 INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdShow)
@@ -454,7 +585,12 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 	hWnd = CreateWindow("Window1", "三角ポリゴン",
 		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right, rect.bottom,
 		NULL, NULL, wc.hInstance, NULL);
+	const float root3 = 1.7320508f;
+	const float r = 0.036f + 0.0001f;
+	const float d = 0.8f;
 
+	
+	
 	MSG msg;
 	ZeroMemory(&msg, sizeof(msg));
 	
@@ -478,6 +614,27 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 		CreateVertexBuffer(TYOUTEN);
 		CreateIndexBuffer(hIndexData,modeldata);
 		
+		vector<Ball*> balls;
+		Vector3 positions[15];
+		int num = 0;
+		pmd *model[15];
+		LPTSTR filenames[15] = {
+			TEXT("1.pmd"), TEXT("2.pmd"), TEXT("3.pmd"), TEXT("4.pmd"), TEXT("5.pmd"),
+			TEXT("6.pmd"), TEXT("7.pmd"), TEXT("8.pmd"), TEXT("9.pmd"), TEXT("10.pmd"),
+			TEXT("11.pmd"), TEXT("12.pmd"), TEXT("13.pmd"), TEXT("14.pmd"), TEXT("15.pmd")
+		};
+		for (int i = 0; i < 5; ++i) {
+			for (int j = 0; j < i + 1; ++j) {
+				model[num] = new pmd(filenames[num]);
+				positions[num].x = i*r - j * 2 * r;
+				positions[num].y = 0;
+				positions[num].z = d + i*root3*r;
+				balls.push_back(new Ball(model[num], positions[num]));
+				num++;
+			}
+		}
+		
+		
 		//ウインドウ表示
 		ShowWindow(hWnd, SW_SHOW);
 		
@@ -492,7 +649,15 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 			else
 			{
 				set();
-				Render(modeldata);
+				Render(modeldata, VertexBuffer, IndexBuffer);
+				for (int i = 0; i < 15; i++) {
+					ConstantBuffer hConstantBuffer;
+					hConstantBuffer.mWorld = XMMatrixTranspose(balls[i]->World);
+					DeviceContext->UpdateSubresource(hpConstantBuffer, 0, NULL, &hConstantBuffer, 0, 0);
+					DeviceContext->VSSetConstantBuffers(0, 1, &hpConstantBuffer);
+					Renderball(model[i], balls[i]->VertexBuffer, balls[i]->IndexBuffer);
+					
+				}
 				SwapChain->Present(0, 0);//フリップ
 			}
 
