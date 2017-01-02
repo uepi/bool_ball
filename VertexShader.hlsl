@@ -30,7 +30,7 @@ vertexOut VS(vertexIn IN)
 {
 	vertexOut OUT;
 
-	OUT.pos = mul(IN.pos, World);		//ワールド変換
+	OUT.pos = mul(float4(IN.pos, 1.0f), World);		//ワールド変換
 	OUT.pos = mul(OUT.pos, View);		//ビュー変換
 	OUT.pos = mul(OUT.pos, Projection);	//透視射影変換
 	OUT.col = IN.col;

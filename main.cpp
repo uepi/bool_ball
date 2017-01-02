@@ -14,8 +14,8 @@ using namespace DirectX;
 using namespace std;
 
 //定数定義
-#define WINDOW_WIDTH 1920 //ウィンドウ幅
-#define WINDOW_HEIGHT 1080 //ウィンドウ高さ
+#define WINDOW_WIDTH 960 //ウィンドウ幅
+#define WINDOW_HEIGHT 540 //ウィンドウ高さ
 #define D3DX_PI ((FLOAT) 3.141592654f) 
 #define D3DXToRadian( degree ) ((degree) * (D3DX_PI / 180.0f))
 #define D3DXToDegree( radian ) ((radian) * (180.0f / D3DX_PI))
@@ -54,7 +54,7 @@ struct Vector3 {
 	float z;
 };*/
 struct Camera {
-	float pos[4] = { 0.0f,2.0f,-2.0f,0.0f };
+	float pos[4] = { 0.0f,22.0f,-2.0f,0.0f };
 	float at[4] = { 0.0f,0.0f,0.0f,0.0f };
 	float up[4] = { 0.0f,1.0f,0.0f,0.0f };
 };
@@ -480,7 +480,7 @@ VOID Renderball(pmd* _model, ID3D11Buffer* VBuffer, ID3D11Buffer* IBuffer)
 	
 	
 
-		DeviceContext->Draw(_model->face_vert_count, 0);
+	DeviceContext->DrawIndexed(_model->face_vert_count,0, 0);
 		
 	
 
@@ -627,7 +627,7 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 			for (int j = 0; j < i + 1; ++j) {
 				model[num] = new pmd(filenames[num]);
 				positions[num].x = i*r - j * 2 * r;
-				positions[num].y = 0;
+				positions[num].y = 9.8;
 				positions[num].z = d + i*root3*r;
 				balls.push_back(new Ball(model[num], positions[num]));
 				num++;
@@ -653,6 +653,7 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 				for (int i = 0; i < 15; i++) {
 					ConstantBuffer hConstantBuffer;
 					hConstantBuffer.mWorld = XMMatrixTranspose(balls[i]->World);
+
 					DeviceContext->UpdateSubresource(hpConstantBuffer, 0, NULL, &hConstantBuffer, 0, 0);
 					DeviceContext->VSSetConstantBuffers(0, 1, &hpConstantBuffer);
 					Renderball(model[i], balls[i]->VertexBuffer, balls[i]->IndexBuffer);
