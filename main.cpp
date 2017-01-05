@@ -19,7 +19,7 @@ using namespace std;
 #define D3DX_PI ((FLOAT) 3.141592654f) 
 #define D3DXToRadian( degree ) ((degree) * (D3DX_PI / 180.0f))
 #define D3DXToDegree( radian ) ((radian) * (180.0f / D3DX_PI))
-
+TCHAR buf[128];
 //#include "pmd.h"
 //安全に解放する
 #define SAFE_RELEASE(x) if(x){x->Release(); x=NULL;}
@@ -850,6 +850,7 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 				for (int i = 0; i < 15; i++) {
 					GetNextBallPos(balls[i]);
 					balls[i].Update();
+				
 					set(balls[i].World);
 					//set(XMMatrixIdentity());
 					//DeviceContext->UpdateSubresource(hpConstantBuffer, 0, NULL, &hConstantBuffer, 0, 0);
@@ -857,6 +858,9 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 					Renderball(model[i], balls[i].VertexBuffer, balls[i].IndexBuffer);
 					
 				}
+				//_stprintf_s(buf, _T("(%5f,%5f,%f)\n"), XMVectorGetX(balls[0].p),XMVectorGetY(balls[0].p), XMVectorGetZ(balls[0].p));
+
+				OutputDebugString(buf);
 				GetNextBallPos(Whiteball[0]);
 				Whiteball[0].Update();
 				set(Whiteball[0].World);

@@ -25,11 +25,11 @@ class Ball {
 		void rigidBody();
 		void CollisionWall();
 		void CollisionBall();
-		XMVECTOR p;			// 球の位置
-		XMVECTOR Pre_p;		// 1つ前の円の位置
+		XMVECTOR p = XMVectorSet(0, 0, 0, 0);;			// 球の位置
+		XMVECTOR Pre_p = XMVectorSet(0, 0, 0, 0);;		// 1つ前の円の位置
 		XMVECTOR v = XMVectorSet(0,0,0,0);			// 速度ベクトル
 		XMVECTOR a = XMVectorSet(0, 0, 0, 0);			// 加速度ベクトル
-		float r = 0.036f + 0.0001f;				// 半径
+		float r = 0.36f + 0.0001f;				// 半径
 		float w=1.0;				// 質量
 		float scale=1.0;			// スケール
 		int verocity;
