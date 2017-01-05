@@ -578,6 +578,23 @@ void SphereColProc(Ball *b1, Ball *b2)
 	b1->p += b1->v;
 	b2->p += b2->v;
 }
+
+void GetRefrectVelo(XMVECTOR *pOut, XMVECTOR &N, XMVECTOR &V, float e)
+{
+	XMVector3Normalize(N);
+	*pOut = V - (1 + e)*XMVector3Dot(N, V)*N;
+}
+
+void GetRelectedPos(float Res_time, Ball &s, XMVECTOR &RefV)
+{
+	// 衝突位置
+	// 0.99は壁にめり込まないための補正
+	s.p = s.Pre_p + s.v * (1 - Res_time)*0.99f;
+	// 反射ベクトル
+	s.v = RefV;
+	// 位置を補正
+	s.p += s.v * Res_time;
+}
 //レンダリング
 VOID Render(pmd* _model, ID3D11Buffer* VBuffer, ID3D11Buffer* IBuffer)
 {
@@ -597,15 +614,15 @@ VOID Render(pmd* _model, ID3D11Buffer* VBuffer, ID3D11Buffer* IBuffer)
 	DeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	
-	int vertex_start = 0;
+	/*int vertex_start = 0;
 	for (int i = 0; i < _model->material_count;i++) {
 				
 				DeviceContext->DrawIndexed(_model->material[i].face_vert_count, vertex_start, 0);
 				vertex_start = vertex_start + _model->material[i].face_vert_count;//マテリアルの頂点数すすめる
-	}		
+	}*/		
 
 	
-
+	DeviceContext->DrawIndexed(_model->face_vert_count, 0, 0);
 }
 
 VOID Renderball(pmd* _model, ID3D11Buffer* VBuffer, ID3D11Buffer* IBuffer)
@@ -777,7 +794,7 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 		whiteball = new pmd("1.pmd");
 		Vector3 white_pos;
 		white_pos.x = -1.0f;
-		white_pos.y = 9.8f;
+		white_pos.y = 9.4f;
 		white_pos.z = 0.0f;
 		Whiteball.emplace_back(whiteball, white_pos);
 
@@ -785,7 +802,7 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 			for (int j = 0; j < i + 1; ++j) {
 				model[num] = new pmd(filenames[num]);
 				positions[num].x = (d + i*root3*r);
-				positions[num].y = 9.8f;
+				positions[num].y = 9.4f;
 				positions[num].z =  i*r - j * 2 * r;
 				balls.emplace_back(model[num], positions[num]);
 				num++;
@@ -806,6 +823,7 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 			}
 			else
 			{
+				
 				if (GetAsyncKeyState(VK_F10)) {
 					//Whiteball[0].World *= XMMatrixTranslation(1.0f, 0.0f, 0.0f);
 					Whiteball[0].v = XMVectorSet(2, 0, 0, 1);
@@ -860,13 +878,14 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 				}
 				//_stprintf_s(buf, _T("(%5f,%5f,%f)\n"), XMVectorGetX(balls[0].p),XMVectorGetY(balls[0].p), XMVectorGetZ(balls[0].p));
 
-				OutputDebugString(buf);
+				//OutputDebugString(buf);
 				GetNextBallPos(Whiteball[0]);
 				Whiteball[0].Update();
 				set(Whiteball[0].World);
 				Renderball(whiteball, Whiteball[0].VertexBuffer, Whiteball[0].IndexBuffer);
 				SwapChain->Present(0, 0);//フリップ
 			}
+			
 
 		}
 		delete[] hIndexData;
