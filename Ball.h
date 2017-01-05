@@ -25,13 +25,20 @@ class Ball {
 		void rigidBody();
 		void CollisionWall();
 		void CollisionBall();
+		XMVECTOR p;			// 球の位置
+		XMVECTOR Pre_p;		// 1つ前の円の位置
+		XMVECTOR v;			// 速度ベクトル
+		XMVECTOR a;			// 加速度ベクトル
+		float r = 0.036f + 0.0001f;				// 半径
+		float w=1.0;				// 質量
+		float scale=1.0;			// スケール
 		int verocity;
 		int angle;
 		int power;
-		float r;
 		ID3D11Buffer* VertexBuffer = nullptr;
 		ID3D11Buffer* IndexBuffer = nullptr;
-		XMMATRIX World;
+		XMMATRIX World= XMMatrixIdentity();
+		
 
 		//vector<Ball*> balls;
 };

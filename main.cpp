@@ -41,6 +41,8 @@ ID3D11DepthStencilView* DepthStencilView = NULL;//深度ステンシルビュー
 ID3D11Buffer* Indexball = NULL;
 //ConstantBuffer hConstantBuffer;
 XMMATRIX hWorld;		//ワールド変換行列
+float g_Circle_Ref = 0.75f;	// 球同士の反発係数
+
 
 
 /*struct Vertex3D {
@@ -295,6 +297,33 @@ void set() {
 	//コンテキストに設定
 	DeviceContext->VSSetConstantBuffers(0, 1, &hpConstantBuffer);
 }
+void set(XMMATRIX& _world) {
+	//ワールド変換用行列を生成
+	XMMATRIX hWorld;		//ワールド変換行列
+	hWorld = _world;
+
+	XMMATRIX hView;		//ビュー変換行列
+
+	XMVECTOR hEye = XMVectorSet(camera.pos[0], camera.pos[1], camera.pos[2], camera.pos[3]);	//カメラの位置
+	XMVECTOR hAt = XMVectorSet(camera.at[0], camera.at[1], camera.at[2], camera.at[3]);		//焦点の位置
+	XMVECTOR hUp = XMVectorSet(camera.up[0], camera.up[1], camera.up[2], camera.up[3]);
+
+	hView = XMMatrixLookAtLH(hEye, hAt, hUp);
+
+
+	XMMATRIX hProjection;	//透視射影変換行列
+	hProjection = XMMatrixPerspectiveFovLH(D3DXToRadian(100.0f), 16.0f / 9.0f, 0.1f, 1000.0f);
+
+	ConstantBuffer hConstantBuffer;
+	hConstantBuffer.mWorld = XMMatrixTranspose(hWorld);
+	hConstantBuffer.mView = XMMatrixTranspose(hView);
+	hConstantBuffer.mProjection = XMMatrixTranspose(hProjection);
+	DeviceContext->UpdateSubresource(hpConstantBuffer, 0, NULL, &hConstantBuffer, 0, 0);
+
+	//コンテキストに設定
+	DeviceContext->VSSetConstantBuffers(0, 1, &hpConstantBuffer);
+}
+
 void CreateVertexData(pmd* _model, vector<Vertex3D>& _data, unsigned short** _index)
 {
 	for (int i = 0; i < _model->vert_count; ++i) {
@@ -427,12 +456,134 @@ void ballCreateIndexBuffer(unsigned short* _index, pmd* _model,Ball& balls)
 	}
 }
 
+
+void GetNextBallPos(Ball &s)
+{
+	XMVECTOR RefV;	// 反射後の速度ベクトル
+	XMVECTOR ColliPos;	// 衝突位置
+	float Res_time = 0.0f;	// 衝突後の移動可能時間
+
+	s.Pre_p = s.p;		// 前の位置を保存
+	s.p += s.v;			// 位置更新
+}
+bool CheckBallCollision(
+	FLOAT rA, FLOAT rB,
+	XMVECTOR *pPre_pos_A, XMVECTOR *pPos_A,
+	XMVECTOR *pPre_pos_B, XMVECTOR *pPos_B,
+	FLOAT *pOut_t,
+	XMVECTOR *pOut_colli_A,
+	XMVECTOR *pOut_colli_B
+)
+{
+	// 前位置及び到達位置におけるパーティクル間のベクトルを算出
+	XMVECTOR C0 = *pPre_pos_B - *pPre_pos_A;
+	XMVECTOR C1 = *pPos_B - *pPos_A;
+	XMVECTOR D = C1 - C0;
+	FLOAT P, Q, R;
+	// 衝突判定用の2次関数係数の算出
+	XMStoreFloat(&P, XMVector3LengthSq(D)); if (P <= 0) return false; // 同じ方向に移動
+	XMStoreFloat(&Q, XMVector3Dot(C0, D)); if (Q == 0) return false; // 平行
+	XMStoreFloat(&R, XMVector3LengthSq(C0));
+
+	// パーティクル距離
+	FLOAT r = rA + rB;
+
+	// 衝突判定式
+	FLOAT Judge = Q*Q - P*(R - r*r);
+	if (Judge < 0) {
+		// 衝突していない
+		return false;
+	}
+
+	// 衝突時間の算出
+	FLOAT t_plus = (-Q + sqrt(Judge)) / P;
+	FLOAT t_minus = (-Q - sqrt(Judge)) / P;
+
+	// 衝突時間が0未満1より大きい場合、衝突しない
+	//   if( (t_plus < 0 || t_plus > 1) && (t_minus < 0 || t_minus > 1)) return false;
+	if (t_minus < 0 || t_minus > 1) return false;
+
+	// 衝突時間の決定（t_minus側が常に最初の衝突）
+	*pOut_t = t_minus;
+
+	// 衝突位置の決定
+	*pOut_colli_A = *pPre_pos_A + t_minus * (*pPos_A - *pPre_pos_A);
+	*pOut_colli_B = *pPre_pos_B + t_minus * (*pPos_B - *pPre_pos_B);
+
+	return true; // 衝突報告
+}
+
+bool CalcBallColliAfterPos(
+	XMVECTOR *pColliPos_A, XMVECTOR *pVelo_A,
+	XMVECTOR *pColliPos_B, XMVECTOR *pVelo_B,
+	FLOAT weight_A, FLOAT weight_B,
+	FLOAT res_A, FLOAT res_B,
+	FLOAT time,
+	XMVECTOR *pOut_pos_A, XMVECTOR *pOut_velo_A,
+	XMVECTOR *pOut_pos_B, XMVECTOR *pOut_velo_B
+)
+{
+	FLOAT TotalWeight = weight_A + weight_B; // 質量の合計
+	FLOAT RefRate = (1 + res_A*res_B); // 反発率
+	XMVECTOR C = *pColliPos_B - *pColliPos_A; // 衝突軸ベクトル
+	XMVector3Normalize(C);
+	FLOAT Dot;
+	XMStoreFloat(&Dot, XMVector3Dot((*pVelo_A - *pVelo_B), C)); // 内積算出
+	XMVECTOR ConstVec = RefRate*Dot / TotalWeight * C; // 定数ベクトル
+
+													   // 衝突後速度ベクトルの算出
+	*pOut_velo_A = -weight_B * ConstVec + *pVelo_A;
+	*pOut_velo_B = weight_A * ConstVec + *pVelo_B;
+
+	// 衝突後位置の算出
+	*pOut_pos_A = *pColliPos_A + time * (*pOut_velo_A);
+	*pOut_pos_B = *pColliPos_B + time * (*pOut_velo_B);
+
+	return true;
+}
+
+void SphereColProc(Ball *b1, Ball *b2)
+{
+	float t = 0;
+	XMVECTOR C1ColPos, C2ColPos, C1Velo, C2Velo;
+
+	// 衝突している2円の衝突位置を検出
+	if (!CheckBallCollision(
+		b1->r, b2->r,
+		&b1->Pre_p, &b1->p,
+		&b2->Pre_p, &b2->p,
+		&t,
+		&C1ColPos,
+		&C2ColPos))
+		return;	// 衝突していないようです
+	
+				// 衝突位置を前位置として保存
+	b1->p=C1ColPos;
+	b2->p = C2ColPos;
+	b1->Pre_p = C1ColPos;
+	b2->Pre_p = C2ColPos;
+
+	// 衝突後の速度を算出
+	if (!CalcBallColliAfterPos(
+		&C1ColPos, &b1->v,
+		&C2ColPos, &b2->v,
+		b1->w, b2->w,
+		g_Circle_Ref, g_Circle_Ref,		// 球の反発係数
+		t,
+		&C1ColPos, &C1Velo,
+		&C2ColPos, &C2Velo))
+		return; // 何か失敗したようです
+
+				// 衝突後位置に移動
+	b1->v = C1Velo;
+	b2->v = C2Velo;
+	b1->p += b1->v;
+	b2->p += b2->v;
+}
 //レンダリング
 VOID Render(pmd* _model, ID3D11Buffer* VBuffer, ID3D11Buffer* IBuffer)
 {
-	float ClearColor[4] = { 0,0,1,1 }; //消去色
-	DeviceContext->ClearRenderTargetView(RenderTargetView, ClearColor);//画面クリア 
-	DeviceContext->ClearDepthStencilView(DepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);																   //使用するシェーダーの登録
+																	   //使用するシェーダーの登録
 	DeviceContext->VSSetShader(VertexShader, NULL, 0);
 	DeviceContext->PSSetShader(PixelShader, NULL, 0);
 
@@ -614,7 +765,7 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 		CreateVertexBuffer(TYOUTEN);
 		CreateIndexBuffer(hIndexData,modeldata);
 		
-		vector<Ball*> balls;
+		vector<Ball> balls;
 		Vector3 positions[15];
 		int num = 0;
 		pmd *model[15];
@@ -623,13 +774,22 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 			TEXT("6.pmd"), TEXT("7.pmd"), TEXT("8.pmd"), TEXT("9.pmd"), TEXT("10.pmd"),
 			TEXT("11.pmd"), TEXT("12.pmd"), TEXT("13.pmd"), TEXT("14.pmd"), TEXT("15.pmd")
 		};
+		pmd* whiteball;
+		vector<Ball> Whiteball;
+		whiteball = new pmd("1.pmd");
+		Vector3 white_pos;
+		white_pos.x = 0;
+		white_pos.y = 9.8f;
+		white_pos.z = 0;
+		Whiteball.emplace_back(whiteball, white_pos);
+
 		for (int i = 0; i < 5; ++i) {
 			for (int j = 0; j < i + 1; ++j) {
 				model[num] = new pmd(filenames[num]);
-				positions[num].x = i*r - j * 2 * r;
-				positions[num].y = 9.8;
-				positions[num].z = d + i*root3*r;
-				balls.push_back(new Ball(model[num], positions[num]));
+				positions[num].x = (d + i*root3*r);
+				positions[num].y = 9.8f;
+				positions[num].z =  i*r - j * 2 * r;
+				balls.emplace_back(model[num], positions[num]);
 				num++;
 			}
 		}
@@ -648,17 +808,61 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 			}
 			else
 			{
+				if (GetAsyncKeyState(VK_F10)) {
+					Whiteball[0].World *= XMMatrixTranslation(1.0f, 0.0f, 0.0f);
+					
+
+				}
+				if (GetAsyncKeyState(VK_UP))
+					camera.pos[1] += 0.01f;
+				if (GetAsyncKeyState(VK_DOWN))
+					camera.pos[1] -= 0.01f;
+				for (int a = 0; a < 15; a++) {
+					float r3 = (balls[a].r + Whiteball[0].r)*(balls[a].r + Whiteball[0].r);
+					XMVECTOR pos_w = Whiteball[0].p - balls[a].p;
+					float x = XMVectorGetX(pos_w);
+					float y = XMVectorGetY(pos_w);
+					float z = XMVectorGetZ(pos_w);
+					if (r3 >= x*x + y*y + z*z)
+					{
+					
+						// 2球衝突処理をする
+						SphereColProc(&Whiteball[0], &balls[a]);
+					}
+				}
+				for (int c = 0; c < 15; c++) {
+					for (int d = c; d < 15; d++) {
+						float r2 = (balls[c].r + balls[d].r)*(balls[c].r + balls[d].r);
+						XMVECTOR pos = balls[c].p - balls[d].p;
+						float x = XMVectorGetX(pos);
+						float y = XMVectorGetY(pos);
+						float z = XMVectorGetZ(pos);
+						if (r2 >= x*x + y*y + z*z)
+						{
+							// 2球衝突処理をする
+							SphereColProc(&balls[c], &balls[d]);
+						}
+					}
+				}
+				float ClearColor[4] = { 0,0,1,1 }; //消去色
+				DeviceContext->ClearRenderTargetView(RenderTargetView, ClearColor);//画面クリア 
+				DeviceContext->ClearDepthStencilView(DepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 				set();
 				Render(modeldata, VertexBuffer, IndexBuffer);
 				for (int i = 0; i < 15; i++) {
-					ConstantBuffer hConstantBuffer;
-					hConstantBuffer.mWorld = XMMatrixTranspose(balls[i]->World);
-
-					DeviceContext->UpdateSubresource(hpConstantBuffer, 0, NULL, &hConstantBuffer, 0, 0);
-					DeviceContext->VSSetConstantBuffers(0, 1, &hpConstantBuffer);
-					Renderball(model[i], balls[i]->VertexBuffer, balls[i]->IndexBuffer);
+					GetNextBallPos(balls[i]);
+					balls[i].Update();
+					set(balls[i].World);
+					//set(XMMatrixIdentity());
+					//DeviceContext->UpdateSubresource(hpConstantBuffer, 0, NULL, &hConstantBuffer, 0, 0);
+					//DeviceContext->VSSetConstantBuffers(0, 1, &hpConstantBuffer);
+					Renderball(model[i], balls[i].VertexBuffer, balls[i].IndexBuffer);
 					
 				}
+				GetNextBallPos(Whiteball[0]);
+				//Whiteball[0].Update();
+				set(Whiteball[0].World);
+				Renderball(whiteball, Whiteball[0].VertexBuffer, Whiteball[0].IndexBuffer);
 				SwapChain->Present(0, 0);//フリップ
 			}
 
@@ -671,16 +875,6 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 	//終了
 	return 0;
 }
-
-
-
-
-
-
-
-
-
-
 
 
 
