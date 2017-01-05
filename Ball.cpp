@@ -15,7 +15,7 @@ extern void createBall(Vector3 positions);
 Ball::Ball(pmd* model, Vector3 position)
 {
 
-	this->p = XMVectorSet(position.x,position.y,position.z,1.0f);
+	this->p = XMVectorSet(position.x*10.0f,position.y,position.z*10.0f,1.0f);
 	vector<Vertex3D>TYOUTEN;
 	unsigned short* hIndexData = nullptr;
 	CreateVertexData(model, TYOUTEN, &hIndexData);

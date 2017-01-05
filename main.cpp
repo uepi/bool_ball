@@ -459,8 +459,6 @@ void ballCreateIndexBuffer(unsigned short* _index, pmd* _model,Ball& balls)
 
 void GetNextBallPos(Ball &s)
 {
-	XMVECTOR RefV;	// 反射後の速度ベクトル
-	XMVECTOR ColliPos;	// 衝突位置
 	float Res_time = 0.0f;	// 衝突後の移動可能時間
 
 	s.Pre_p = s.p;		// 前の位置を保存
@@ -778,9 +776,9 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 		vector<Ball> Whiteball;
 		whiteball = new pmd("1.pmd");
 		Vector3 white_pos;
-		white_pos.x = 0;
+		white_pos.x = -1.0f;
 		white_pos.y = 9.8f;
-		white_pos.z = 0;
+		white_pos.z = 0.0f;
 		Whiteball.emplace_back(whiteball, white_pos);
 
 		for (int i = 0; i < 5; ++i) {
@@ -809,8 +807,8 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 			else
 			{
 				if (GetAsyncKeyState(VK_F10)) {
-					Whiteball[0].World *= XMMatrixTranslation(1.0f, 0.0f, 0.0f);
-					
+					//Whiteball[0].World *= XMMatrixTranslation(1.0f, 0.0f, 0.0f);
+					Whiteball[0].v = XMVectorSet(2, 0, 0, 1);
 
 				}
 				if (GetAsyncKeyState(VK_UP))
@@ -860,7 +858,7 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 					
 				}
 				GetNextBallPos(Whiteball[0]);
-				//Whiteball[0].Update();
+				Whiteball[0].Update();
 				set(Whiteball[0].World);
 				Renderball(whiteball, Whiteball[0].VertexBuffer, Whiteball[0].IndexBuffer);
 				SwapChain->Present(0, 0);//フリップ
